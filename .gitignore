@@ -1,0 +1,40 @@
+# Go build
+*.out
+*.a
+*.o
+*.test
+*.mod
+*.sum
+/bin/
+/vendor/
+
+# Logs
+*.log
+audit.log
+
+# Environment
+.env
+.env.*
+
+# Docker
+docker-data/
+*.pid
+
+# Foundry
+cache/
+out/
+artifacts/
+foundry.toml
+
+# IPFS
+.ipfs/
+ipfs_staging/
+
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# System
+.DS_Store
+Thumbs.db
