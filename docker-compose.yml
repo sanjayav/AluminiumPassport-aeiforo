@@ -1,11 +1,241 @@
+version: '3.8'
 
-version: '3'
 services:
-  backend:
-    build: .
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: aluminium_passport_db
+    environment:
+      POSTGRES_DB: aluminium_passport
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     ports:
-      - "8080:8080"
-    env_file:
-      - .env
+      - "5432:5432"
     volumes:
-      - .:/app
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - aluminium_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # IPFS Node
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: aluminium_passport_ipfs
+    environment:
+      - IPFS_PROFILE=server
+    ports:
+      - "4001:4001"     # P2P port
+      - "5001:5001"     # API port
+      - "8080:8080"     # Gateway port (will conflict with backend, so we'll change backend to 8081)
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_staging:/export
+    networks:
+      - aluminium_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5001/api/v0/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: aluminium_passport_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - aluminium_network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Aluminium Passport Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aluminium_passport_backend
+    environment:
+      - PORT=8081
+      - ENVIRONMENT=development
+      - DEBUG=true
+      
+      # Database Configuration
+      - DATABASE_URL=postgres://postgres:password@postgres:5432/aluminium_passport?sslmode=disable
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=aluminium_passport
+      - DB_SSL_MODE=disable
+      
+      # JWT Configuration
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production-2024
+      - JWT_EXPIRATION_HOURS=24
+      - JWT_REFRESH_HOURS=168
+      
+      # Blockchain Configuration (Polygon testnet)
+      - WEB3_RPC_URL=https://polygon-mumbai.infura.io/v3/YOUR_PROJECT_ID
+      - PRIVATE_KEY=your_private_key_here
+      - CONTRACT_ADDRESS=0x0000000000000000000000000000000000000000
+      - CHAIN_ID=80001
+      - GAS_LIMIT=300000
+      - GAS_PRICE=20000000000
+      
+      # IPFS Configuration
+      - IPFS_API_URL=http://ipfs:5001
+      - IPFS_GATEWAY_URL=http://ipfs:8080/ipfs/
+      - IPFS_PROJECT_ID=
+      - IPFS_PROJECT_SECRET=
+      
+      # Security Configuration
+      - BCRYPT_COST=12
+      - RATE_LIMIT_RPM=100
+      - MAX_FILE_SIZE=52428800
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8081
+      
+      # External Services
+      - ESG_API_URL=https://api.esg-scoring.com/v1
+      - ESG_API_KEY=your_esg_api_key
+      
+      # Feature Flags
+      - ENABLE_ZK_PROOFS=true
+      - ENABLE_AUDIT_LOGS=true
+      - ENABLE_METRICS=true
+      
+      # File Upload
+      - UPLOAD_PATH=/app/uploads
+      - MAX_ZIP_SIZE=104857600
+      - ALLOWED_FILE_TYPES=.json,.csv,.xlsx
+      
+      # Redis Configuration
+      - REDIS_URL=redis://redis:6379/0
+      
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env
+    networks:
+      - aluminium_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ipfs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Database Migration Runner
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    container_name: aluminium_passport_migrate
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres:5432/aluminium_passport?sslmode=disable
+    networks:
+      - aluminium_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: aluminium_passport_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - aluminium_network
+    depends_on:
+      - backend
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # Prometheus for monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aluminium_passport_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - aluminium_network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aluminium_passport_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - aluminium_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+    driver: local
+  ipfs_data:
+    driver: local
+  ipfs_staging:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  aluminium_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,8 @@
+This is a placeholder for a sample ZIP file containing passport data examples.
+
+In a real implementation, this would be a binary ZIP file containing:
+1. sample_passports.json - JSON array of passport objects
+2. sample_passports.csv - CSV file with passport data
+3. README.txt - Instructions for batch upload
+
+The ZIP file would demonstrate the expected format for bulk passport uploads.

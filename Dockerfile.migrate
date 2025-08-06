@@ -1,0 +1,37 @@
+# Migration Dockerfile
+FROM golang:1.21-alpine AS builder
+
+# Install dependencies
+RUN apk add --no-cache git ca-certificates
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy migration source
+COPY cmd/migrate ./cmd/migrate
+COPY migrations ./migrations
+
+# Build the migration tool
+RUN CGO_ENABLED=0 GOOS=linux go build -o migrate ./cmd/migrate
+
+# Final stage
+FROM alpine:latest
+
+# Install ca-certificates and postgresql client
+RUN apk --no-cache add ca-certificates postgresql-client
+
+# Set working directory
+WORKDIR /app
+
+# Copy migration binary and SQL files
+COPY --from=builder /app/migrate .
+COPY --from=builder /app/migrations ./migrations
+
+# Run migrations
+CMD ["./migrate"]
