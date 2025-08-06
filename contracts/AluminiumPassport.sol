@@ -5,12 +5,13 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 /// @title AluminiumPassport - Upgradeable, role-based, auditable aluminium passport contract
 /// @notice Manages aluminium passports, supplier onboarding, and role-based access with upgradeability
-contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgradeable {
+contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable {
     // --- Version ---
-    string public constant VERSION = "2.0.0";
+    string public constant VERSION = "2.1.0";
 
     // --- Roles ---
     bytes32 public constant SUPER_ADMIN_ROLE = keccak256("SUPER_ADMIN_ROLE");
@@ -69,6 +70,9 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     event CertificationAdded(string indexed passportId, string certification, address indexed certifier, uint256 timestamp);
     event SupplyChainStepAdded(string indexed passportId, string step, address indexed addedBy, uint256 timestamp);
     event RoleRevoked(address indexed account, bytes32 indexed role, address indexed revokedBy, uint256 timestamp);
+    event Paused(address indexed account, uint256 timestamp);
+    event Unpaused(address indexed account, uint256 timestamp);
+    event SuperAdminTransferred(address indexed oldSuperAdmin, address indexed newSuperAdmin, uint256 timestamp);
 
     // --- Modifiers ---
     modifier onlyRoleOrAdmin(bytes32 role) {
@@ -80,13 +84,16 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     }
 
     // --- Initializer ---
-    /// @notice Initializes the contract and sets the super admin
+    /// @notice Initializes the contract and sets the super admin and admin
     /// @param superAdmin The address to be granted SUPER_ADMIN_ROLE
-    function initialize(address superAdmin) public initializer {
+    /// @param admin The address to be granted ADMIN_ROLE
+    function initialize(address superAdmin, address admin) public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        __Pausable_init();
         _grantRole(DEFAULT_ADMIN_ROLE, superAdmin);
         _grantRole(SUPER_ADMIN_ROLE, superAdmin);
+        _grantRole(ADMIN_ROLE, admin);
     }
 
     /// @notice Returns the contract version
@@ -94,15 +101,32 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         return VERSION;
     }
 
+    /// @notice Returns true if the contract is paused
+    function isPaused() external view returns (bool) {
+        return paused();
+    }
+
     // --- UUPS Upgrade Authorization ---
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(SUPER_ADMIN_ROLE) {}
+
+    // --- Pausable ---
+    /// @notice Pause the contract (SUPER_ADMIN or ADMIN)
+    function pause() external onlyRoleOrAdmin(SUPER_ADMIN_ROLE) whenNotPaused {
+        _pause();
+        emit Paused(msg.sender, block.timestamp);
+    }
+    /// @notice Unpause the contract (SUPER_ADMIN or ADMIN)
+    function unpause() external onlyRoleOrAdmin(SUPER_ADMIN_ROLE) whenPaused {
+        _unpause();
+        emit Unpaused(msg.sender, block.timestamp);
+    }
 
     // --- Supplier Onboarding ---
     /// @notice Request onboarding as a supplier (manufacturer, recycler, certifier)
     /// @param roleRequested The role requested (must be MANUFACTURER_ROLE, RECYCLER_ROLE, or CERTIFIER_ROLE)
     /// @param companyName The name of the company
     /// @param metadataIPFS IPFS hash of supplier metadata
-    function requestSupplierOnboarding(string memory roleRequested, string memory companyName, string memory metadataIPFS) external {
+    function requestSupplierOnboarding(string memory roleRequested, string memory companyName, string memory metadataIPFS) external whenNotPaused {
         require(
             keccak256(bytes(roleRequested)) == keccak256("MANUFACTURER_ROLE") ||
             keccak256(bytes(roleRequested)) == keccak256("RECYCLER_ROLE") ||
@@ -129,7 +153,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
 
     /// @notice Approve a supplier onboarding request
     /// @param supplier The address of the supplier to approve
-    function approveSupplierOnboarding(address supplier) external onlyRole(SUPER_ADMIN_ROLE) {
+    function approveSupplierOnboarding(address supplier) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
         SupplierOnboarding storage req = onboardingRequests[supplier];
         require(req.status == OnboardingStatus.Pending, "Not pending");
         req.status = OnboardingStatus.Approved;
@@ -144,7 +168,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
 
     /// @notice Reject a supplier onboarding request
     /// @param supplier The address of the supplier to reject
-    function rejectSupplierOnboarding(address supplier) external onlyRole(SUPER_ADMIN_ROLE) {
+    function rejectSupplierOnboarding(address supplier) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
         SupplierOnboarding storage req = onboardingRequests[supplier];
         require(req.status == OnboardingStatus.Pending, "Not pending");
         req.status = OnboardingStatus.Rejected;
@@ -153,22 +177,40 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         emit SupplierOnboardingRejected(supplier, msg.sender, block.timestamp);
     }
 
-    /// @notice Deactivate a supplier (SUPER_ADMIN only)
+    /// @notice Deactivate a supplier (SUPER_ADMIN only, also revokes all roles except DEFAULT_ADMIN_ROLE)
     /// @param supplier The address of the supplier to deactivate
-    function deactivateSupplier(address supplier) external onlyRole(SUPER_ADMIN_ROLE) {
+    function deactivateSupplier(address supplier) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
         require(isSupplier[supplier], "Not a supplier");
         isSupplier[supplier] = false;
         onboardingRequests[supplier].status = OnboardingStatus.Deactivated;
+        // Revoke all roles except DEFAULT_ADMIN_ROLE
+        bytes32[5] memory roles = [SUPER_ADMIN_ROLE, ADMIN_ROLE, CERTIFIER_ROLE, MANUFACTURER_ROLE, RECYCLER_ROLE];
+        for (uint i = 0; i < roles.length; i++) {
+            if (hasRole(roles[i], supplier)) {
+                _revokeRole(roles[i], supplier);
+                emit RoleRevoked(supplier, roles[i], msg.sender, block.timestamp);
+            }
+        }
         emit SupplierDeactivated(supplier, msg.sender, block.timestamp);
     }
 
     /// @notice Revoke a role from an account (SUPER_ADMIN only)
     /// @param account The address to revoke the role from
     /// @param role The role to revoke
-    function revokeRoleFrom(address account, bytes32 role) external onlyRole(SUPER_ADMIN_ROLE) {
+    function revokeRoleFrom(address account, bytes32 role) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
         require(hasRole(role, account), "Account does not have role");
         _revokeRole(role, account);
         emit RoleRevoked(account, role, msg.sender, block.timestamp);
+    }
+
+    /// @notice Transfer the SUPER_ADMIN_ROLE to a new address (emergency recovery)
+    /// @param newSuperAdmin The address to become the new super admin
+    function transferSuperAdmin(address newSuperAdmin) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
+        require(newSuperAdmin != address(0), "Zero address");
+        require(newSuperAdmin != msg.sender, "Cannot transfer to self");
+        _grantRole(SUPER_ADMIN_ROLE, newSuperAdmin);
+        _revokeRole(SUPER_ADMIN_ROLE, msg.sender);
+        emit SuperAdminTransferred(msg.sender, newSuperAdmin, block.timestamp);
     }
 
     // --- Passport Management ---
@@ -182,7 +224,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         string memory ipfsHash,
         uint256 esgScore,
         uint256 recycledContent
-    ) external onlyRoleOrAdmin(MANUFACTURER_ROLE) {
+    ) external onlyRoleOrAdmin(MANUFACTURER_ROLE) whenNotPaused {
         require(passports[passportId].createdAt == 0, "Passport exists");
         require(bytes(passportId).length > 0, "passportId required");
         require(bytes(origin).length > 0, "origin required");
@@ -214,7 +256,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         string memory ipfsHash,
         uint256 esgScore,
         uint256 recycledContent
-    ) external onlyRoleOrAdmin(MANUFACTURER_ROLE) {
+    ) external onlyRoleOrAdmin(MANUFACTURER_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(p.isActive, "Inactive");
@@ -228,7 +270,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     }
 
     /// @notice Deactivate a passport (ADMIN or higher)
-    function deactivatePassport(string memory passportId) external onlyRoleOrAdmin(ADMIN_ROLE) {
+    function deactivatePassport(string memory passportId) external onlyRoleOrAdmin(ADMIN_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(p.isActive, "Already inactive");
@@ -239,7 +281,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
 
     // --- Certifications & Supply Chain ---
     /// @notice Add a certification to a passport
-    function addCertification(string memory passportId, string memory certification) external onlyRoleOrAdmin(CERTIFIER_ROLE) {
+    function addCertification(string memory passportId, string memory certification) external onlyRoleOrAdmin(CERTIFIER_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(bytes(certification).length > 0, "certification required");
@@ -250,7 +292,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     }
 
     /// @notice Add a supply chain step to a passport
-    function addSupplyChainStep(string memory passportId, string memory step) external onlyRoleOrAdmin(MANUFACTURER_ROLE) {
+    function addSupplyChainStep(string memory passportId, string memory step) external onlyRoleOrAdmin(MANUFACTURER_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(bytes(step).length > 0, "step required");

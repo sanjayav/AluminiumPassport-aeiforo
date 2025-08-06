@@ -16,10 +16,7 @@ contract DeployUpgradeable is Script {
         AluminiumPassport logic = new AluminiumPassport();
 
         // Prepare initializer data for proxy
-        bytes memory data = abi.encodeWithSelector(
-            AluminiumPassport.initialize.selector,
-            superAdmin
-        );
+        bytes memory data = abi.encodeWithSignature("initialize(address)", superAdmin);
 
         // Deploy the ERC1967Proxy (UUPS proxy)
         ERC1967Proxy proxy = new ERC1967Proxy(address(logic), data);
