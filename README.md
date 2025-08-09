@@ -1,27 +1,27 @@
-# 🏭 Enhanced Aluminium Passport System
+#  Enhanced Aluminium Passport System
 
 A comprehensive blockchain-based supply chain transparency platform for aluminium products, built with Go, PostgreSQL, IPFS, and smart contracts on Polygon.
 
-## 🌟 Features
+##  Features
 
 ### Core Functionality
-- **🔐 Role-Based Authentication**: JWT-based auth with 6 user roles (Admin, Miner, Recycler, Certifier, Manufacturer, Auditor, Viewer)
-- **📊 ESG Scoring Engine**: AI-powered Environmental, Social, and Governance scoring
-- **🌐 IPFS Integration**: Decentralized storage for passport metadata
-- **⛓️ Blockchain Integration**: Smart contracts on Polygon for immutable records
-- **📱 QR Code Generation**: GS1-compliant QR codes for supply chain tracking
-- **🔍 Zero-Knowledge Proofs**: Privacy-preserving verification system
-- **📈 Comprehensive Audit Logging**: Complete traceability of all operations
+- ** Role-Based Authentication**: JWT-based auth with 6 user roles (Admin, Miner, Recycler, Certifier, Manufacturer, Auditor, Viewer)
+- ** ESG Scoring Engine**: AI-powered Environmental, Social, and Governance scoring
+- ** IPFS Integration**: Decentralized storage for passport metadata
+- **⛓ Blockchain Integration**: Smart contracts on Polygon for immutable records
+- ** QR Code Generation**: GS1-compliant QR codes for supply chain tracking
+- ** Zero-Knowledge Proofs**: Privacy-preserving verification system
+- ** Comprehensive Audit Logging**: Complete traceability of all operations
 
 ### Advanced Features
-- **📦 Batch Operations**: ZIP file upload for bulk passport creation
-- **🎯 Supply Chain Tracking**: End-to-end traceability from mining to recycling
-- **📋 Certification Management**: Multi-standard compliance tracking
-- **📊 Real-time Analytics**: ESG rankings and performance metrics
-- **🔄 Recycling Tracking**: Circular economy support with recycled content tracking
-- **🛡️ Security Features**: Rate limiting, CORS, comprehensive validation
+- ** Batch Operations**: ZIP file upload for bulk passport creation
+- ** Supply Chain Tracking**: End-to-end traceability from mining to recycling
+- ** Certification Management**: Multi-standard compliance tracking
+- ** Real-time Analytics**: ESG rankings and performance metrics
+- ** Recycling Tracking**: Circular economy support with recycled content tracking
+- ** Security Features**: Rate limiting, CORS, comprehensive validation
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 aluminium-passport/
@@ -43,7 +43,7 @@ aluminium-passport/
 └── main.go              # Application entry point
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Go 1.21+
@@ -125,7 +125,7 @@ GET  /api/export/json         # Export JSON
 POST /api/verify/signature    # Verify digital signature
 ```
 
-## 🗄️ Database Schema
+##  Database Schema
 
 ### Core Tables
 - **users**: User accounts with role-based access
@@ -137,7 +137,7 @@ POST /api/verify/signature    # Verify digital signature
 - **batch_operations**: Bulk operation tracking
 - **zk_proofs**: Zero-knowledge proof storage
 
-## 🔐 Security Features
+##  Security Features
 
 - **JWT Authentication** with refresh tokens
 - **Role-Based Access Control** (RBAC)
@@ -147,7 +147,7 @@ POST /api/verify/signature    # Verify digital signature
 - **Request Logging** and audit trails
 - **Input Validation** and sanitization
 
-## 🌐 Smart Contract Integration
+##  Smart Contract Integration
 
 ### Polygon Network
 ```solidity
@@ -169,7 +169,7 @@ forge script script/Deploy.s.sol --rpc-url $MUMBAI_RPC_URL --broadcast
 # Update CONTRACT_ADDRESS in .env
 ```
 
-## 📊 ESG Scoring System
+##  ESG Scoring System
 
 ### Scoring Categories
 - **Environmental**: Energy efficiency, waste management, carbon emissions, recycled content
@@ -182,7 +182,7 @@ forge script script/Deploy.s.sol --rpc-url $MUMBAI_RPC_URL --broadcast
 - Certification level assignments (Bronze, Silver, Gold, Platinum)
 - Automated recommendations for improvement
 
-## 🔄 Supply Chain Tracking
+##  Supply Chain Tracking
 
 ### Lifecycle Stages
 1. **Mining/Extraction**: Bauxite sourcing and extraction
@@ -200,7 +200,7 @@ forge script script/Deploy.s.sol --rpc-url $MUMBAI_RPC_URL --broadcast
 - IPFS document storage
 - QR code integration
 
-## 📱 QR Code System
+##  QR Code System
 
 ### GS1 Compliance
 - Standard GS1 format support
@@ -214,7 +214,7 @@ forge script script/Deploy.s.sol --rpc-url $MUMBAI_RPC_URL --broadcast
 - **Batch QR**: Batch operation summary
 - **GS1 QR**: Supply chain compliant format
 
-## 🐳 Docker Configuration
+##  Docker Configuration
 
 ### Services
 - **Backend**: Go API server
@@ -230,7 +230,7 @@ forge script script/Deploy.s.sol --rpc-url $MUMBAI_RPC_URL --broadcast
 - **Production**: + Nginx reverse proxy
 - **Monitoring**: + Prometheus & Grafana
 
-## 📈 Monitoring & Analytics
+##  Monitoring & Analytics
 
 ### Metrics Tracked
 - API request rates and latencies
@@ -246,7 +246,7 @@ forge script script/Deploy.s.sol --rpc-url $MUMBAI_RPC_URL --broadcast
 - ESG compliance reporting
 - Supply chain analytics
 
-## 🧪 Testing
+##  Testing
 
 ```bash
 # Unit tests
@@ -262,7 +262,7 @@ go test -tags=load ./...
 # Import: postman_collection.json
 ```
 
-## 🚀 Production Deployment
+##  Production Deployment
 
 ### Infrastructure Requirements
 - **Compute**: 2+ CPU cores, 4GB+ RAM
@@ -286,7 +286,7 @@ go test -tags=load ./...
 - CDN for static assets
 - Load balancer configuration
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create feature branch (`git checkout -b feature/amazing-feature`)
@@ -294,18 +294,18 @@ go test -tags=load ./...
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open Pull Request
 
-## 📝 License
+##  License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+##  Support
 
 - **Documentation**: [API Docs](API_DOCUMENTATION.md)
 - **Issues**: GitHub Issues
 - **Discussions**: GitHub Discussions
 - **Email**: support@aluminiumpassport.com
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Empower.eco** - Inspiration for sustainable supply chain tracking
 - **Aluminium Stewardship Initiative (ASI)** - Standards and best practices
@@ -314,4 +314,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for sustainable supply chains and circular economy**
