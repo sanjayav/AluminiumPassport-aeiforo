@@ -17,6 +17,7 @@ func SetupRoutes() *mux.Router {
 	passportController := controller.NewPassportController()
 	esgController := controller.NewESGController()
 	approvalController := controller.NewApprovalController()
+	demoController := controller.NewDemoController()
 
 	// Health check endpoint
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +30,19 @@ func SetupRoutes() *mux.Router {
 	public := r.PathPrefix("/api/public").Subrouter()
 	public.HandleFunc("/verify/{id}", passportController.GetPassportDetails).Methods("GET")
 	public.HandleFunc("/qr/{id}", passportController.GetQRCode).Methods("GET")
+
+	// Demo endpoints (no auth for demo convenience)
+	demo := r.PathPrefix("/api/demo").Subrouter()
+	demo.HandleFunc("/onboard", demoController.RequestOnboarding).Methods("POST")
+	demo.HandleFunc("/approve", demoController.ApproveOnboarding).Methods("POST")
+	demo.HandleFunc("/upstream", demoController.RegisterUpstream).Methods("POST")
+	demo.HandleFunc("/passports", demoController.CreatePassport).Methods("POST")
+	demo.HandleFunc("/passports", demoController.ListPassports).Methods("GET")
+	demo.HandleFunc("/market", demoController.RecordPlacement).Methods("POST")
+	demo.HandleFunc("/attest", demoController.AddAttestation).Methods("POST")
+	demo.HandleFunc("/recycle", demoController.RecordRecovery).Methods("POST")
+	demo.HandleFunc("/secondary", demoController.SpawnSecondary).Methods("POST")
+	demo.HandleFunc("/public/{id}", demoController.GetPublicView).Methods("GET")
 
 	// Authentication endpoints
 	auth := r.PathPrefix("/api/auth").Subrouter()

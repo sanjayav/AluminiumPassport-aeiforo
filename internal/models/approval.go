@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"aluminium-passport/internal/db"
+)
 
 // ApprovalStatus represents the status of an approval request
 type ApprovalStatus string
@@ -26,14 +30,14 @@ type ApprovalRequest struct {
 	ID              int            `json:"id" db:"id"`
 	RequestType     ApprovalType   `json:"request_type" db:"request_type"`
 	RequestedBy     int            `json:"requested_by" db:"requested_by"`
-	RequestedByUser *User          `json:"requested_by_user,omitempty"`
+	RequestedByUser *db.User       `json:"requested_by_user,omitempty"`
 	ApproverRole    string         `json:"approver_role" db:"approver_role"`
 	ApprovedBy      *int           `json:"approved_by" db:"approved_by"`
-	ApprovedByUser  *User          `json:"approved_by_user,omitempty"`
+	ApprovedByUser  *db.User       `json:"approved_by_user,omitempty"`
 	Status          ApprovalStatus `json:"status" db:"status"`
 	Title           string         `json:"title" db:"title"`
 	Description     string         `json:"description" db:"description"`
-	RequestData     *JSONMap       `json:"request_data" db:"request_data"`
+	RequestData     *db.JSONMap    `json:"request_data" db:"request_data"`
 	ApprovalReason  *string        `json:"approval_reason" db:"approval_reason"`
 	RejectionReason *string        `json:"rejection_reason" db:"rejection_reason"`
 	ExpiresAt       *time.Time     `json:"expires_at" db:"expires_at"`
@@ -44,15 +48,15 @@ type ApprovalRequest struct {
 
 // SupplierOnboardingRequest represents the data for supplier onboarding
 type SupplierOnboardingRequest struct {
-	WalletAddress   string  `json:"wallet_address"`
-	Username        string  `json:"username"`
-	Email           string  `json:"email"`
-	Role            string  `json:"role"`
-	CompanyName     string  `json:"company_name"`
-	CompanyType     string  `json:"company_type"`
-	BusinessLicense string  `json:"business_license"`
-	ContactInfo     JSONMap `json:"contact_info"`
-	Justification   string  `json:"justification"`
+	WalletAddress   string     `json:"wallet_address"`
+	Username        string     `json:"username"`
+	Email           string     `json:"email"`
+	Role            string     `json:"role"`
+	CompanyName     string     `json:"company_name"`
+	CompanyType     string     `json:"company_type"`
+	BusinessLicense string     `json:"business_license"`
+	ContactInfo     db.JSONMap `json:"contact_info"`
+	Justification   string     `json:"justification"`
 }
 
 // ApprovalRequestCreateData represents data needed to create an approval request
@@ -61,7 +65,7 @@ type ApprovalRequestCreateData struct {
 	ApproverRole  string       `json:"approver_role" binding:"required"`
 	Title         string       `json:"title" binding:"required"`
 	Description   string       `json:"description" binding:"required"`
-	RequestData   *JSONMap     `json:"request_data"`
+	RequestData   *db.JSONMap  `json:"request_data"`
 	ExpiresInDays int          `json:"expires_in_days"` // Default 7 days if not specified
 }
 

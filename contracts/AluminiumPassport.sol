@@ -16,10 +16,15 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     // --- Roles ---
     bytes32 public constant SUPER_ADMIN_ROLE = keccak256("SUPER_ADMIN_ROLE");
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant CERTIFIER_ROLE = keccak256("CERTIFIER_ROLE");
-    bytes32 public constant MANUFACTURER_ROLE = keccak256("MANUFACTURER_ROLE");
+    bytes32 public constant MINER_ROLE = keccak256("MINER_ROLE");
+    bytes32 public constant REFINER_ROLE = keccak256("REFINER_ROLE");
+    bytes32 public constant ALLOY_PRODUCER_ROLE = keccak256("ALLOY_PRODUCER_ROLE");
+    bytes32 public constant PRODUCT_MANUFACTURER_ROLE = keccak256("PRODUCT_MANUFACTURER_ROLE");
+    bytes32 public constant DISTRIBUTOR_ROLE = keccak256("DISTRIBUTOR_ROLE");
+    bytes32 public constant SERVICE_PROVIDER_ROLE = keccak256("SERVICE_PROVIDER_ROLE");
     bytes32 public constant RECYCLER_ROLE = keccak256("RECYCLER_ROLE");
-    bytes32 public constant VIEWER_ROLE = keccak256("VIEWER_ROLE");
+    bytes32 public constant AUDITOR_ROLE = keccak256("AUDITOR_ROLE");
+    bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
 
     // --- Passport Struct ---
     struct Passport {
@@ -58,6 +63,89 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     mapping(address => bool) public isSupplier;
     mapping(address => SupplierOnboarding) public onboardingRequests;
     string[] public allPassportIds;
+
+    // --- Automated Approval System ---
+    
+    // Whitelist for pre-approved suppliers
+    mapping(address => bool) public preApprovedSuppliers;
+    mapping(string => bool) public preApprovedDomains; // For email domain-based approval
+    mapping(bytes32 => bool) public preApprovedRoles; // For role-based auto-approval
+    
+    /// @notice Add supplier to pre-approved whitelist
+    /// @param supplier Address to pre-approve
+    /// @param role Role to automatically grant
+    function addPreApprovedSupplier(
+        address supplier,
+        bytes32 role
+    ) external onlyRole(SUPER_ADMIN_ROLE) {
+        preApprovedSuppliers[supplier] = true;
+        preApprovedRoles[role] = true;
+    }
+    
+    /// @notice Remove supplier from pre-approved whitelist
+    /// @param supplier Address to remove from pre-approval
+    function removePreApprovedSupplier(address supplier) external onlyRole(SUPER_ADMIN_ROLE) {
+        preApprovedSuppliers[supplier] = false;
+    }
+    
+    /// @notice Add email domain to pre-approved list
+    /// @param domain Email domain (e.g., "company.com")
+    function addPreApprovedDomain(string calldata domain) external onlyRole(SUPER_ADMIN_ROLE) {
+        preApprovedDomains[domain] = true;
+    }
+    
+    /// @notice Automated supplier onboarding for pre-approved suppliers
+    /// @param roleRequested Role being requested
+    /// @param companyName Company name
+    /// @param metadataIPFS IPFS hash of metadata
+    /// @param emailDomain Email domain for verification
+    function autoApproveSupplierOnboarding(
+        string memory roleRequested,
+        string memory companyName,
+        string memory metadataIPFS,
+        string memory emailDomain
+    ) external whenNotPaused {
+        require(preApprovedSuppliers[msg.sender] || preApprovedDomains[emailDomain], "Not pre-approved");
+        
+        bytes32 role = keccak256(abi.encodePacked(roleRequested));
+        require(preApprovedRoles[role], "Role not pre-approved for auto-approval");
+        
+        // Auto-approve the supplier
+        onboardingRequests[msg.sender] = SupplierOnboarding({
+            supplier: msg.sender,
+            roleRequested: roleRequested,
+            companyName: companyName,
+            metadataIPFS: metadataIPFS,
+            requestedBy: msg.sender,
+            requestedAt: block.timestamp,
+            status: OnboardingStatus.Approved,
+            approvedBy: address(0), // Auto-approved
+            approvedAt: block.timestamp
+        });
+        
+        // Grant the role
+        _grantRole(role, msg.sender);
+        isSupplier[msg.sender] = true;
+        
+        emit SupplierOnboardingRequested(msg.sender, roleRequested, companyName, msg.sender, block.timestamp);
+        emit SupplierOnboardingApproved(msg.sender, address(0), block.timestamp);
+    }
+    
+    /// @notice Bulk add pre-approved suppliers
+    /// @param suppliers Array of supplier addresses
+    /// @param roles Array of roles to pre-approve
+    function bulkAddPreApprovedSuppliers(
+        address[] calldata suppliers,
+        bytes32[] calldata roles
+    ) external onlyRole(SUPER_ADMIN_ROLE) {
+        require(suppliers.length == roles.length, "Arrays length mismatch");
+        require(suppliers.length <= 100, "Max 100 suppliers per batch");
+        
+        for (uint256 i = 0; i < suppliers.length; i++) {
+            preApprovedSuppliers[suppliers[i]] = true;
+            preApprovedRoles[roles[i]] = true;
+        }
+    }
 
     // --- Events ---
     event PassportCreated(string indexed passportId, address indexed createdBy, string manufacturer, string origin, uint256 timestamp);
@@ -123,14 +211,20 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
 
     // --- Supplier Onboarding ---
     /// @notice Request onboarding as a supplier (manufacturer, recycler, certifier)
-    /// @param roleRequested The role requested (must be MANUFACTURER_ROLE, RECYCLER_ROLE, or CERTIFIER_ROLE)
+    /// @param roleRequested The role requested (must be one of the supply chain roles)
     /// @param companyName The name of the company
     /// @param metadataIPFS IPFS hash of supplier metadata
     function requestSupplierOnboarding(string memory roleRequested, string memory companyName, string memory metadataIPFS) external whenNotPaused {
         require(
-            keccak256(bytes(roleRequested)) == keccak256("MANUFACTURER_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("MINER_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("REFINER_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("ALLOY_PRODUCER_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("PRODUCT_MANUFACTURER_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("DISTRIBUTOR_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("SERVICE_PROVIDER_ROLE") ||
             keccak256(bytes(roleRequested)) == keccak256("RECYCLER_ROLE") ||
-            keccak256(bytes(roleRequested)) == keccak256("CERTIFIER_ROLE"),
+            keccak256(bytes(roleRequested)) == keccak256("AUDITOR_ROLE") ||
+            keccak256(bytes(roleRequested)) == keccak256("REGULATOR_ROLE"),
             "Invalid supplier role"
         );
         require(!isSupplier[msg.sender], "Already a supplier");
@@ -184,7 +278,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         isSupplier[supplier] = false;
         onboardingRequests[supplier].status = OnboardingStatus.Deactivated;
         // Revoke all roles except DEFAULT_ADMIN_ROLE
-        bytes32[5] memory roles = [SUPER_ADMIN_ROLE, ADMIN_ROLE, CERTIFIER_ROLE, MANUFACTURER_ROLE, RECYCLER_ROLE];
+        bytes32[11] memory roles = [SUPER_ADMIN_ROLE, ADMIN_ROLE, MINER_ROLE, REFINER_ROLE, ALLOY_PRODUCER_ROLE, PRODUCT_MANUFACTURER_ROLE, DISTRIBUTOR_ROLE, SERVICE_PROVIDER_ROLE, RECYCLER_ROLE, AUDITOR_ROLE, REGULATOR_ROLE];
         for (uint i = 0; i < roles.length; i++) {
             if (hasRole(roles[i], supplier)) {
                 _revokeRole(roles[i], supplier);
@@ -213,6 +307,175 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         emit SuperAdminTransferred(msg.sender, newSuperAdmin, block.timestamp);
     }
 
+    // --- Batch Processing for Large Scale Operations ---
+    
+    /// @notice Batch approve multiple suppliers at once
+    /// @param suppliers Array of supplier addresses to approve
+    /// @param roles Array of roles to grant (must match suppliers array length)
+    function batchApproveSuppliers(
+        address[] calldata suppliers,
+        bytes32[] calldata roles
+    ) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
+        require(suppliers.length == roles.length, "Arrays length mismatch");
+        require(suppliers.length <= 50, "Max 50 suppliers per batch"); // Gas limit protection
+        
+        for (uint256 i = 0; i < suppliers.length; i++) {
+            address supplier = suppliers[i];
+            bytes32 role = roles[i];
+            
+            require(onboardingRequests[supplier].status == OnboardingStatus.Pending, "Supplier not pending");
+            
+            // Approve the supplier
+            onboardingRequests[supplier].status = OnboardingStatus.Approved;
+            onboardingRequests[supplier].approvedBy = msg.sender;
+            onboardingRequests[supplier].approvedAt = block.timestamp;
+            
+            // Grant the requested role
+            _grantRole(role, supplier);
+            isSupplier[supplier] = true;
+            
+            emit SupplierOnboardingApproved(supplier, msg.sender, block.timestamp);
+        }
+    }
+    
+    /// @notice Batch reject multiple suppliers at once
+    /// @param suppliers Array of supplier addresses to reject
+    function batchRejectSuppliers(
+        address[] calldata suppliers
+    ) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
+        require(suppliers.length <= 50, "Max 50 suppliers per batch");
+        
+        for (uint256 i = 0; i < suppliers.length; i++) {
+            address supplier = suppliers[i];
+            
+            require(onboardingRequests[supplier].status == OnboardingStatus.Pending, "Supplier not pending");
+            
+            onboardingRequests[supplier].status = OnboardingStatus.Rejected;
+            onboardingRequests[supplier].approvedBy = msg.sender;
+            onboardingRequests[supplier].approvedAt = block.timestamp;
+            
+            emit SupplierOnboardingRejected(supplier, msg.sender, block.timestamp);
+        }
+    }
+    
+    /// @notice Get pending suppliers for batch processing
+    /// @param startIndex Starting index for pagination
+    /// @param count Number of suppliers to return
+    /// @return suppliers Array of pending supplier addresses
+    /// @return totalPending Total number of pending suppliers
+    function getPendingSuppliers(
+        uint256 startIndex,
+        uint256 count
+    ) external view returns (address[] memory suppliers, uint256 totalPending) {
+        // This would require additional storage to track pending suppliers efficiently
+        // For now, returning empty arrays - implementation would need supplier list tracking
+        suppliers = new address[](0);
+        totalPending = 0;
+    }
+    
+    /// @notice Bulk supplier status update
+    /// @param suppliers Array of supplier addresses
+    /// @param statuses Array of new statuses
+    function bulkUpdateSupplierStatus(
+        address[] calldata suppliers,
+        OnboardingStatus[] calldata statuses
+    ) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
+        require(suppliers.length == statuses.length, "Arrays length mismatch");
+        require(suppliers.length <= 50, "Max 50 suppliers per batch");
+        
+        for (uint256 i = 0; i < suppliers.length; i++) {
+            address supplier = suppliers[i];
+            OnboardingStatus status = statuses[i];
+            
+            onboardingRequests[supplier].status = status;
+            onboardingRequests[supplier].approvedBy = msg.sender;
+            onboardingRequests[supplier].approvedAt = block.timestamp;
+            
+            if (status == OnboardingStatus.Approved) {
+                isSupplier[supplier] = true;
+            } else if (status == OnboardingStatus.Deactivated) {
+                isSupplier[supplier] = false;
+            }
+        }
+    }
+
+    // --- Supplier Management & Analytics ---
+    
+    /// @notice Get supplier statistics for dashboard
+    /// @return totalSuppliers Total number of approved suppliers
+    /// @return pendingSuppliers Number of pending approvals
+    /// @return activeSuppliers Number of active suppliers
+    /// @return deactivatedSuppliers Number of deactivated suppliers
+    function getSupplierStats() external view returns (
+        uint256 totalSuppliers,
+        uint256 pendingSuppliers,
+        uint256 activeSuppliers,
+        uint256 deactivatedSuppliers
+    ) {
+        // Note: This is a simplified implementation
+        // Full implementation would require additional storage tracking
+        totalSuppliers = 0;
+        pendingSuppliers = 0;
+        activeSuppliers = 0;
+        deactivatedSuppliers = 0;
+    }
+    
+    /// @notice Get suppliers by role for management
+    /// @param role Role to filter by
+    /// @param startIndex Starting index for pagination
+    /// @param count Number of suppliers to return
+    /// @return suppliers Array of supplier addresses with the role
+    function getSuppliersByRole(
+        bytes32 role,
+        uint256 startIndex,
+        uint256 count
+    ) external view returns (address[] memory suppliers) {
+        // Note: This would require additional storage for efficient role-based queries
+        suppliers = new address[](0);
+    }
+    
+    /// @notice Bulk deactivate suppliers
+    /// @param suppliers Array of supplier addresses to deactivate
+    function bulkDeactivateSuppliers(
+        address[] calldata suppliers
+    ) external onlyRole(SUPER_ADMIN_ROLE) whenNotPaused {
+        require(suppliers.length <= 50, "Max 50 suppliers per batch");
+        
+        for (uint256 i = 0; i < suppliers.length; i++) {
+            address supplier = suppliers[i];
+            
+            if (isSupplier[supplier]) {
+                isSupplier[supplier] = false;
+                onboardingRequests[supplier].status = OnboardingStatus.Deactivated;
+                onboardingRequests[supplier].approvedBy = msg.sender;
+                onboardingRequests[supplier].approvedAt = block.timestamp;
+                
+                emit SupplierDeactivated(supplier, msg.sender, block.timestamp);
+            }
+        }
+    }
+    
+    /// @notice Check if supplier is active and has specific role
+    /// @param supplier Supplier address to check
+    /// @param role Role to verify
+    /// @return isActive Whether supplier is active
+    /// @return hasRole Whether supplier has the specified role
+    function getSupplierStatus(
+        address supplier,
+        bytes32 role
+    ) external view returns (bool isActive, bool hasRole) {
+        isActive = isSupplier[supplier];
+        hasRole = this.hasRole(role, supplier);
+    }
+    
+    /// @notice Get all roles for a supplier
+    /// @param supplier Supplier address
+    /// @return roles Array of role hashes the supplier has
+    function getSupplierRoles(address supplier) external view returns (bytes32[] memory roles) {
+        // Note: This would require additional storage to track all roles efficiently
+        roles = new bytes32[](0);
+    }
+
     // --- Passport Management ---
     /// @notice Create a new aluminium passport
     function createPassport(
@@ -224,7 +487,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         string memory ipfsHash,
         uint256 esgScore,
         uint256 recycledContent
-    ) external onlyRoleOrAdmin(MANUFACTURER_ROLE) whenNotPaused {
+    ) external onlyRoleOrAdmin(PRODUCT_MANUFACTURER_ROLE) whenNotPaused {
         require(passports[passportId].createdAt == 0, "Passport exists");
         require(bytes(passportId).length > 0, "passportId required");
         require(bytes(origin).length > 0, "origin required");
@@ -256,7 +519,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
         string memory ipfsHash,
         uint256 esgScore,
         uint256 recycledContent
-    ) external onlyRoleOrAdmin(MANUFACTURER_ROLE) whenNotPaused {
+    ) external onlyRoleOrAdmin(PRODUCT_MANUFACTURER_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(p.isActive, "Inactive");
@@ -281,7 +544,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
 
     // --- Certifications & Supply Chain ---
     /// @notice Add a certification to a passport
-    function addCertification(string memory passportId, string memory certification) external onlyRoleOrAdmin(CERTIFIER_ROLE) whenNotPaused {
+    function addCertification(string memory passportId, string memory certification) external onlyRoleOrAdmin(AUDITOR_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(bytes(certification).length > 0, "certification required");
@@ -292,7 +555,7 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     }
 
     /// @notice Add a supply chain step to a passport
-    function addSupplyChainStep(string memory passportId, string memory step) external onlyRoleOrAdmin(MANUFACTURER_ROLE) whenNotPaused {
+    function addSupplyChainStep(string memory passportId, string memory step) external onlyRoleOrAdmin(PRODUCT_MANUFACTURER_ROLE) whenNotPaused {
         Passport storage p = passports[passportId];
         require(p.createdAt != 0, "Not found");
         require(bytes(step).length > 0, "step required");
@@ -343,10 +606,16 @@ contract AluminiumPassport is Initializable, UUPSUpgradeable, AccessControlUpgra
     function _stringToRole(string memory role) internal pure returns (bytes32) {
         if (keccak256(bytes(role)) == keccak256("SUPER_ADMIN_ROLE")) return SUPER_ADMIN_ROLE;
         if (keccak256(bytes(role)) == keccak256("ADMIN_ROLE")) return ADMIN_ROLE;
-        if (keccak256(bytes(role)) == keccak256("CERTIFIER_ROLE")) return CERTIFIER_ROLE;
-        if (keccak256(bytes(role)) == keccak256("MANUFACTURER_ROLE")) return MANUFACTURER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("AUDITOR_ROLE")) return AUDITOR_ROLE;
+        if (keccak256(bytes(role)) == keccak256("MINER_ROLE")) return MINER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("REFINER_ROLE")) return REFINER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("ALLOY_PRODUCER_ROLE")) return ALLOY_PRODUCER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("PRODUCT_MANUFACTURER_ROLE")) return PRODUCT_MANUFACTURER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("DISTRIBUTOR_ROLE")) return DISTRIBUTOR_ROLE;
+        if (keccak256(bytes(role)) == keccak256("SERVICE_PROVIDER_ROLE")) return SERVICE_PROVIDER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("MANUFACTURER_ROLE")) return PRODUCT_MANUFACTURER_ROLE; // Backward compatibility
         if (keccak256(bytes(role)) == keccak256("RECYCLER_ROLE")) return RECYCLER_ROLE;
-        if (keccak256(bytes(role)) == keccak256("VIEWER_ROLE")) return VIEWER_ROLE;
+        if (keccak256(bytes(role)) == keccak256("REGULATOR_ROLE")) return REGULATOR_ROLE;
         revert("Unknown role");
     }
 
